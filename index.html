@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Canvas Space Shooter</title>
+    <style>
+        html,
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            cursor: none;
+        }
+
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+
+<body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const VIEWPORT_WIDTH = canvas.width;
+        const VIEWPORT_HEIGHT = canvas.height;
+        const ARENA_WIDTH = 12000;
+        const ARENA_HEIGHT = 10000;
+
+        let x = ARENA_WIDTH / 2;
+        let y = ARENA_HEIGHT / 2;
+        let direction = 0;
+        const BASE_SPEED = 10;
+        const BASE_ROTATION_SPEED = 3;
+        const AIM_ROTATION_SPEED = 0.5;
+        let currentSpeed = BASE_SPEED;
+        let rotationSpeed = BASE_ROTATION_SPEED;
+
+        const keys = {};
+        const lasers = [];
+
+        const shipImg = new Image();
+        const shipBoostImg = new Image();
+        const shipXBoostImg = new Image();
+        shipImg.src = 'starfighter.png';
+        shipBoostImg.src = 'starfighterWboost.png';
+        shipXBoostImg.src = 'starfighterWXboost.png';
+
+        const stars = [];
+        for (let i = 0; i < 5000; i++) {
+            stars.push({
+                x: Math.random() * ARENA_WIDTH,
+                y: Math.random() * ARENA_HEIGHT,
+                r: Math.random() * 2 + 1,
+                a: Math.random() * 0.5 + 0.5
+            });
+        }
+
+        let isBoosting = false;
+        let isZoomedOut = false;
+        let isPrecisionMode = false;
+
+        document.addEventListener('keydown', e => {
+            if (!keys[e.key]) {
+                if (e.key === 'b') isBoosting = !isBoosting;
+                if (e.key === 'p') isZoomedOut = !isZoomedOut;
+                if (e.key === 'Shift') isPrecisionMode = !isPrecisionMode;
+            }
+            keys[e.key] = true;
+        });
+
+        document.addEventListener('keyup', e => {
+            keys[e.key] = false;
+        });
+
+        function shootLaser() {
+            const rad = (direction - 90) * Math.PI / 180;
+            const perpRad = rad + Math.PI / 2;
+
+            const shipHalfHeight = 100;
+            const imageOffsetY = 15;
+            const offset = shipHalfHeight - imageOffsetY;
+            const spacing = 25;
+
+            const tipX = x + Math.cos(rad) * offset;
+            const tipY = y + Math.sin(rad) * offset;
+
+            lasers.push({ x: tipX + Math.cos(perpRad) * spacing, y: tipY + Math.sin(perpRad) * spacing, rad });
+            lasers.push({ x: tipX - Math.cos(perpRad) * spacing, y: tipY - Math.sin(perpRad) * spacing, rad });
+
+            const laserSound = new Audio('laser.mp3');
+            laserSound.volume = 0.1;
+            laserSound.play();
+        }
+
+        setInterval(() => {
+            if (keys[' ']) shootLaser();
+        }, 130);
+
+        function update() {
+            currentSpeed = isBoosting ? BASE_SPEED * 1.7 : BASE_SPEED;
+            rotationSpeed = isPrecisionMode ? AIM_ROTATION_SPEED : BASE_ROTATION_SPEED;
+
+            if (keys.a) direction -= rotationSpeed;
+            if (keys.d) direction += rotationSpeed;
+
+            const rad = (direction - 90) * Math.PI / 180;
+            if (keys.w) {
+                x += Math.cos(rad) * currentSpeed;
+                y += Math.sin(rad) * currentSpeed;
+            }
+            if (keys.s) {
+                x -= Math.cos(rad) * currentSpeed;
+                y -= Math.sin(rad) * currentSpeed;
+            }
+
+            x = Math.max(0, Math.min(x, ARENA_WIDTH));
+            y = Math.max(0, Math.min(y, ARENA_HEIGHT));
+
+            lasers.forEach(l => {
+                l.x += Math.cos(l.rad) * 35;
+                l.y += Math.sin(l.rad) * 35;
+            });
+
+            for (let i = lasers.length - 1; i >= 0; i--) {
+                if (lasers[i].x < 0 || lasers[i].x > ARENA_WIDTH || lasers[i].y < 0 || lasers[i].y > ARENA_HEIGHT) {
+                    lasers.splice(i, 1);
+                }
+            }
+        }
+
+        function draw() {
+
+
+            ctx.clearRect(0, 0, VIEWPORT_WIDTH, VIEWPORT_HEIGHT);
+
+            const zoom = isZoomedOut ? 0.6 : 1;
+            const halfW = VIEWPORT_WIDTH / 2 / zoom;
+            const halfH = VIEWPORT_HEIGHT / 2 / zoom;
+            const offsetX = Math.min(0, Math.max(VIEWPORT_WIDTH - ARENA_WIDTH * zoom, -x * zoom + VIEWPORT_WIDTH / 2));
+            const offsetY = Math.min(0, Math.max(VIEWPORT_HEIGHT - ARENA_HEIGHT * zoom, -y * zoom + VIEWPORT_HEIGHT / 2));
+
+            ctx.save();
+            ctx.scale(zoom, zoom);
+            ctx.translate(offsetX / zoom, offsetY / zoom);
+
+            ctx.strokeStyle = '#444';
+            ctx.setLineDash([20, 10]);
+            ctx.strokeRect(0, 0, ARENA_WIDTH, ARENA_HEIGHT);
+            ctx.setLineDash([]);
+
+            ctx.fillStyle = '#fff';
+            for (const s of stars) {
+                ctx.globalAlpha = s.a;
+                ctx.beginPath();
+                ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.globalAlpha = 1.0;
+
+            ctx.fillStyle = '#ff00ea';
+            for (const l of lasers) {
+                ctx.save();
+                ctx.translate(l.x, l.y);
+                ctx.rotate(l.rad - Math.PI / 2);
+                ctx.fillRect(-2.5, -30, 5, 35);
+                ctx.restore();
+            }
+
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate((direction * Math.PI) / 180);
+            const img = isBoosting && keys.w ? shipXBoostImg : (keys.w || keys.a || keys.d || keys.s ? shipBoostImg : shipImg);
+            ctx.drawImage(img, -35, -40, 70, 80);
+            ctx.restore();
+
+
+            ctx.restore();
+        }
+
+        function loop() {
+            update();
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        loop();
+    </script>
+</body>
+
+</html>
